@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>CITT Express</title>
+<style>
+  :root{
+    --bg:#0f1733;
+    --panel:rgba(18,25,52,.93);
+    --line:rgba(255,255,255,.14);
+    --ink:#eef1fb;
+    --muted:#9aa4c7;
+    --accent:#6ee7ff;
+    --ok:#8fe84d;
+    --bad:#ff7a6b;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink)}
+  canvas{display:block}
+
+  /* ---------- superposiciones ---------- */
+  .overlay{position:fixed;inset:0;display:grid;place-items:center;z-index:20;
+    background:rgba(8,12,28,.7);backdrop-filter:blur(7px);
+    opacity:0;visibility:hidden;transition:opacity .3s ease,visibility .3s}
+  .overlay.show{opacity:1;visibility:visible}
+  .card{width:min(660px,93vw);max-height:90vh;overflow:auto;background:var(--panel);
+    border:1px solid var(--line);border-radius:18px;padding:26px 30px;
+    box-shadow:0 26px 70px rgba(0,0,0,.55)}
+  .card h1{margin:0 0 6px;font-size:26px;letter-spacing:.2px}
+  .card h2{margin:0 0 6px;font-size:21px;line-height:1.3}
+  .card p{margin:10px 0;line-height:1.55;color:#d7dcf0}
+  .eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:1.6px;color:var(--accent);margin:0}
+  button{font:inherit;font-weight:600;cursor:pointer;border-radius:11px;padding:11px 20px;
+    border:1px solid var(--line);background:#232c56;color:var(--ink);transition:background .15s}
+  button:hover:not(:disabled){background:#2f3b72}
+  button.primary{background:var(--accent);color:#06243a;border-color:transparent}
+  button.primary:hover{background:#9af0ff}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:18px}
+  .note{font-size:13px;color:var(--muted);line-height:1.5}
+
+  /* ---------- carga ---------- */
+  #loading .card{text-align:center;width:min(430px,88vw)}
+  #loading-bar{height:7px;border-radius:99px;background:rgba(255,255,255,.1);overflow:hidden;margin:18px 0 10px}
+  #loading-bar-fill{height:100%;width:0;background:var(--accent);transition:width .25s ease}
+  #loading-label{font-size:13px;color:var(--muted)}
+
+  /* ---------- inicio ---------- */
+  .keys{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0 2px;font-size:13.5px}
+  kbd{background:#1e2650;border:1px solid var(--line);border-bottom-width:2px;border-radius:7px;
+    padding:4px 9px;font:600 13px/1 ui-monospace,monospace}
+
+  /* ---------- HUD ---------- */
+  #hud{position:fixed;inset:0;z-index:10;pointer-events:none;
+    opacity:0;transition:opacity .4s ease}
+  #hud.show{opacity:1}
+  .panel{background:rgba(14,20,44,.74);border:1px solid var(--line);
+    border-radius:13px;padding:10px 14px;backdrop-filter:blur(8px)}
+  #hud-tl{position:absolute;top:14px;left:14px;max-width:min(46vw,420px)}
+  #objective{font-size:17px;font-weight:650}
+  #objective-sub{font-size:12.5px;color:var(--muted);margin-top:3px}
+  #hud-tr{position:absolute;top:14px;right:14px;text-align:right;display:grid;gap:3px}
+  #progress{font-size:15px;font-weight:650}
+  #timer{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+  #fx-state{font-size:11px;color:var(--muted);opacity:.75}
+
+  #compass{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+    width:132px;height:132px;display:grid;place-items:center;transition:opacity .25s}
+  #compass-arrow{width:100%;height:100%;display:grid;place-items:center}
+  #compass svg{filter:drop-shadow(0 0 7px rgba(110,231,255,.5))}
+  #distance{position:absolute;top:calc(50% + 78px);left:50%;transform:translateX(-50%);
+    font:600 13px/1 ui-monospace,monospace;color:var(--accent);
+    text-shadow:0 1px 6px #000;font-variant-numeric:tabular-nums}
+
+  #slots{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);
+    display:flex;gap:8px}
+  .slot{min-width:82px;height:52px;padding:0 8px;border-radius:11px;
+    border:1px dashed rgba(255,255,255,.22);background:rgba(14,20,44,.62);
+    display:grid;place-items:center;position:relative;transition:border-color .3s,background .3s}
+  .slot.filled{border-style:solid;border-color:var(--ok);background:rgba(44,74,38,.68)}
+  .slot-i{position:absolute;top:3px;left:7px;font-size:9px;color:var(--muted)}
+  .slot-v{font:700 13px/1 ui-monospace,monospace;color:#7e88ad;letter-spacing:-.3px}
+  .slot.filled .slot-v{color:#d9ffc4}
+
+  #toast{position:absolute;bottom:86px;left:50%;transform:translate(-50%,8px);
+    background:rgba(14,20,44,.92);border:1px solid var(--line);border-radius:11px;
+    padding:9px 16px;font-size:13.5px;opacity:0;transition:opacity .25s,transform .25s}
+  #toast.show{opacity:1;transform:translate(-50%,0)}
+
+  /* ---------- aviso del bug (esquina, no bloquea) ---------- */
+  #bug-alert{position:absolute;top:84px;right:14px;width:min(310px,80vw);
+    display:flex;gap:11px;align-items:flex-start;
+    background:rgba(72,22,26,.94);border:1px solid rgba(255,122,107,.55);
+    border-left:4px solid var(--bad);border-radius:13px;padding:12px 14px;
+    box-shadow:0 14px 34px rgba(0,0,0,.45);
+    opacity:0;transform:translateX(18px);transition:opacity .25s,transform .25s}
+  #bug-alert.show{opacity:1;transform:translateX(0)}
+  #bug-alert .dot{width:26px;height:26px;border-radius:50%;flex:none;margin-top:1px;
+    background:radial-gradient(circle at 38% 34%, #ff6b5e 0 46%, #c9322a 47% 100%);
+    box-shadow:inset -2px -3px 0 rgba(0,0,0,.25)}
+  #bug-alert p{margin:0;font-size:13.5px;line-height:1.45;color:#ffe3df}
+
+  /* ---------- pregunta ---------- */
+  #quiz .card{width:min(720px,94vw)}
+  #quiz-house{font-size:12.5px;color:var(--muted);margin:2px 0 12px}
+  #quiz-greeting{font-size:14px;color:#c6cdea;border-left:3px solid var(--line);
+    padding-left:13px;margin:0 0 16px;font-style:italic}
+  #quiz-text{font-size:17.5px;font-weight:600;line-height:1.45;margin:0 0 16px}
+  #quiz-options{display:grid;gap:9px}
+  .option{display:flex;gap:12px;align-items:flex-start;text-align:left;width:100%;
+    font-weight:500;line-height:1.45;padding:13px 15px;background:#1b2349;
+    border-color:rgba(255,255,255,.1)}
+  .option:disabled{cursor:default;opacity:.55}
+  .option-k{flex:none;width:23px;height:23px;border-radius:7px;background:#2f3b72;
+    display:grid;place-items:center;font:700 12px/1 ui-monospace,monospace;color:var(--accent)}
+  .option.right{background:rgba(44,96,38,.75);border-color:var(--ok);opacity:1}
+  .option.right .option-k{background:var(--ok);color:#10280a}
+  .option.wrong{background:rgba(96,34,34,.7);border-color:var(--bad)}
+  .option.wrong .option-k{background:var(--bad);color:#3a0f0a}
+  .quiz-result{margin:14px 0 0;font-size:14px;font-weight:600;min-height:20px}
+  .quiz-result.ok{color:var(--ok)}
+  .quiz-result.bad{color:var(--bad)}
+  #quiz-reward{display:none}
+  #quiz-reward.show{display:block}
+  #quiz-explain{font-size:14px;line-height:1.55;color:#d7dcf0;margin:8px 0 0}
+  #quiz-fragment{font:800 32px/1 ui-monospace,monospace;letter-spacing:3px;
+    text-align:center;padding:14px;margin:16px 0 4px;border-radius:12px;
+    background:rgba(255,255,255,.06);border:1px solid var(--line)}
+  .frag-label{text-align:center;font-size:12px;color:var(--muted);margin:0}
+  #quiz-btn{display:none}
+  #quiz-btn.show{display:inline-block}
+
+  /* ---------- final ---------- */
+  /* Es lo que el alumnado se lleva del desafío: tiene que destacar. */
+  #final-encoded{font:800 clamp(15px,3.6vw,25px)/1.4 ui-monospace,monospace;
+    color:#dcfbff;text-align:center;word-break:break-all;padding:20px 16px;
+    border-radius:14px;background:rgba(110,231,255,.16);
+    border:2px solid rgba(110,231,255,.7);margin:16px 0 10px;letter-spacing:.5px;
+    box-shadow:0 0 0 4px rgba(110,231,255,.08),0 10px 28px rgba(0,0,0,.4)}
+  #final-stats{font-size:13px;color:var(--muted);text-align:center;margin:0 0 6px}
+  #final-list{list-style:none;padding:0;margin:14px 0 0;display:grid;gap:8px}
+  #final-list li{display:grid;grid-template-columns:78px 1fr;gap:11px;align-items:baseline;
+    font-size:13.5px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.07)}
+  #final-list code{font:700 13px/1 ui-monospace,monospace;color:var(--accent);
+    background:rgba(110,231,255,.1);border-radius:6px;padding:5px 6px;text-align:center}
+  #final-list strong{display:block}
+  #final-list span{font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<!-- ---------------- carga ---------------- -->
+<div id="loading" class="overlay show">
+  <div class="card">
+    <p class="eyebrow">CITT Express</p>
+    <h1>Cargando el planeta</h1>
+    <div id="loading-bar"><div id="loading-bar-fill"></div></div>
+    <div id="loading-label">Iniciando</div>
+  </div>
+</div>
+
+<!-- ---------------- inicio ---------------- -->
+<div id="start" class="overlay">
+  <div class="card">
+    <p class="eyebrow">Juego educativo de ciberseguridad</p>
+    <h1>CITT Express</h1>
+    <p>Recoge un paquete en la central, sigue la baliza hasta la casa que te
+      toque y entrégalo en mano.</p>
+    <p>En cada casa te espera alguien con <strong>una pregunta</strong>. Si
+      aciertas, te recompensará con <strong>un fragmento de lo que parece una
+      clave</strong> y con el principio de ciberseguridad que hay detrás.</p>
+    <p class="note">Cuidado con la chinita que ronda el planeta: si te toca
+      mientras llevas un paquete, se lo lleva y tendrás que volver a la central
+      por otro. No puede entrar en la plaza de la central, y solo persigue
+      cuando llevas algo encima.</p>
+    <div class="keys">
+      <kbd>W</kbd><kbd>S</kbd> avanzar y retroceder
+      <kbd>A</kbd><kbd>D</kbd> girar
+      <kbd>P</kbd> efectos
+    </div>
+    <div class="row"><button id="start-btn" class="primary">Comenzar la ruta</button></div>
+  </div>
+</div>
+
+<!-- ---------------- HUD ---------------- -->
+<div id="hud">
+  <div id="hud-tl" class="panel">
+    <div id="objective">Recoge un paquete en la central</div>
+    <div id="objective-sub"></div>
+  </div>
+
+  <div id="hud-tr" class="panel">
+    <div id="progress">0/5 entregas</div>
+    <div id="timer">0:00</div>
+    <div id="fx-state">efectos: on</div>
+  </div>
+
+  <div id="compass">
+    <div id="compass-arrow">
+      <svg width="124" height="124" viewBox="0 0 124 124" fill="none" aria-hidden="true">
+        <path d="M62 12 L76 46 L62 39 L48 46 Z" fill="#6ee7ff"/>
+        <circle cx="62" cy="62" r="50" stroke="rgba(110,231,255,.22)" stroke-width="1.5"/>
+      </svg>
+    </div>
+  </div>
+  <div id="distance"></div>
+
+  <div id="slots"></div>
+  <div id="toast"></div>
+
+  <div id="bug-alert" role="status" aria-live="polite">
+    <div class="dot"></div>
+    <p>¡Un bug se hizo con la entrega! Deberás volver a buscar otro paquete</p>
+  </div>
+</div>
+
+<!-- ---------------- pregunta del NPC ---------------- -->
+<div id="quiz" class="overlay">
+  <div class="card">
+    <p class="eyebrow" id="quiz-npc">NPC</p>
+    <div id="quiz-house">Casa</div>
+    <p id="quiz-greeting"></p>
+    <h2 id="quiz-text"></h2>
+    <div id="quiz-options"></div>
+    <p class="quiz-result" id="quiz-result"></p>
+
+    <div id="quiz-reward">
+      <p id="quiz-explain"></p>
+      <div id="quiz-fragment">??</div>
+      <p class="frag-label">Fragmento de la clave</p>
+    </div>
+
+    <div class="row">
+      <button id="quiz-btn" class="primary">Continuar</button>
+      <span class="note" id="quiz-hint">Elige una alternativa para continuar</span>
+    </div>
+  </div>
+</div>
+
+<!-- ---------------- final ---------------- -->
+<div id="final" class="overlay">
+  <div class="card">
+    <p class="eyebrow">Ruta completada</p>
+    <h1>Clave ensamblada</h1>
+    <p>Las 5 entregas están hechas en <strong id="final-time"></strong>. Los
+      fragmentos, unidos en el orden de sus casilleros, forman esta cadena:</p>
+    <div id="final-encoded"></div>
+    <p class="note">Has encontrado la clave pero, parece estar codificada...</p>
+    <p id="final-stats"></p>
+    <div class="row">
+      <button id="copy-btn" class="primary">Copiar cadena</button>
+      <button id="restart-btn">Jugar de nuevo</button>
+    </div>
+    <ol id="final-list"></ol>
+  </div>
+</div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>

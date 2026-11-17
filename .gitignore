@@ -1,0 +1,19 @@
+# Dependencias: se reinstalan con `npm ci` a partir de package-lock.json.
+node_modules/
+
+# Resultado del build. Se regenera con `npm run build`.
+# Si quien despliega no puede ejecutar Node, comenta esta línea y sube dist/
+# ya construido: son archivos estáticos y no necesitan nada más.
+dist/
+
+# Modelos .glb exportados para revisión. El juego NO los usa: los personajes
+# se construyen en código. Se regeneran con `npm run export`.
+models/
+
+# Varios
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
